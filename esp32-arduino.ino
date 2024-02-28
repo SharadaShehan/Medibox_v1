@@ -31,6 +31,8 @@ int alarm_times[alarm_count][2] = {
   {1, 0},
   {2, 0}
 };
+bool alarm_ringing_finished[alarm_count] = {false, false, false};
+bool alarms_enabled = true;
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
@@ -40,6 +42,13 @@ void setup() {
     Serial.println(F("SSD1306 allocation failed"));
     for (;;);
   }
+
+  pinMode(LED, OUTPUT);
+  pinMode(BUZZER, OUTPUT);
+  pinMode(UP_BUTTON, INPUT);
+  pinMode(DOWN_BUTTON, INPUT);
+  pinMode(OK_BUTTON, INPUT);
+  pinMode(CANCEL_BUTTON, INPUT);
 
   dht.setup(DHT_PIN, DHTesp::DHT22);
 
@@ -59,7 +68,9 @@ void setup() {
 
 void loop() {
   update_time_and_temp();
-  check_alarm_reached();
+  if (alarms_enabled) {
+    check_alarm_reached();
+  }
   delay(1000);
 }
 
@@ -74,7 +85,7 @@ void update_time_and_temp() {
   humidity = dht.getHumidity();
   temperature = dht.getTemperature();
   milliTimenow = millis();
-  timenow[0] = milliTimenow / 1000 / 60 / 60;
+  timenow[0] = (milliTimenow / 1000 / 60 / 60) % 24;
   timenow[1] = (milliTimenow / 1000 / 60) % 60;
   timenow[2] = (milliTimenow / 1000) % 60;
   display.clearDisplay();
@@ -85,21 +96,33 @@ void update_time_and_temp() {
   delay(1000);
 }
 
-void ring_alarm() {
-  for (int j = 0; j < buzzer_tone_count; j++) {
-    tone(BUZZER, buzzer_tones[j]);
-    delay(400);
-    noTone(BUZZER);
-    delay(2);
+void ring_alarm(int alarm_index) {
+  digitalWrite(LED, HIGH);
+  while (!alarm_ringing_finished[alarm_index]) {
+    for (int j = 0; j < buzzer_tone_count; j++) {
+      if (digitalRead(CANCEL_BUTTON) == LOW) {
+        alarm_ringing_finished[alarm_index] = true;
+        digitalWrite(LED, LOW);
+        break;
+      }
+      tone(BUZZER, buzzer_tones[j]);
+      delay(400);
+      noTone(BUZZER);
+      delay(2);
+    }
   }
 }
 
 void check_alarm_reached() {
   for (int i = 0; i < alarm_count; i++) {
     if (alarm_times[i][0] == timenow[0] && alarm_times[i][1] == timenow[1]) {
-      display.clearDisplay();
-      print_text_line("Alarm time reached!", 0, 0);
-      ring_alarm();
+      if (!alarm_ringing_finished[i]) {
+        display.clearDisplay();
+        print_text_line("Medicine time!", 0, 0, 2);
+        ring_alarm(i);
+      }
+    } else {
+      alarm_ringing_finished[i] = false;
     }
   }
 }
