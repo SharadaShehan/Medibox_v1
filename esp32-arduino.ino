@@ -92,8 +92,31 @@ void update_time_and_temp() {
   print_text_line("Time: " + String(timenow[0]) + ":" + String(timenow[1]) + ":" + String(timenow[2]), 0, 0);
   print_text_line("Temperature: " + String(temperature) + "C", 10, 0);
   print_text_line("Humidity: " + String(humidity) + "%", 20, 0);
-  display.display();
-  delay(1000);
+  if ((temperature > 32 || temperature < 26) && (humidity > 80 || humidity < 60)) {
+    print_text_line("Temperature and humidity out of range!", 30, 0);
+    display.display();
+    digitalWrite(LED, HIGH);
+    delay(500);
+    digitalWrite(LED, LOW);
+    delay(20);
+  } else if (temperature > 32 || temperature < 26) {
+    print_text_line("Temperature out of range!", 30, 0);
+    display.display();
+    digitalWrite(LED, HIGH);
+    delay(500);
+    digitalWrite(LED, LOW);
+    delay(20);
+  } else if (humidity > 80 || humidity < 60) {
+    print_text_line("Humidity out of range!", 30, 0);
+    display.display();
+    digitalWrite(LED, HIGH);
+    delay(500);
+    digitalWrite(LED, LOW);
+    delay(20);
+  } else {
+    display.display();
+    delay(500);
+  }
 }
 
 void ring_alarm(int alarm_index) {
