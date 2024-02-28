@@ -96,24 +96,16 @@ void update_time_and_temp() {
     print_text_line("Temperature and humidity out of range!", 30, 0);
     display.display();
     digitalWrite(LED, HIGH);
-    delay(500);
-    digitalWrite(LED, LOW);
-    delay(20);
   } else if (temperature > 32 || temperature < 26) {
     print_text_line("Temperature out of range!", 30, 0);
     display.display();
     digitalWrite(LED, HIGH);
-    delay(500);
-    digitalWrite(LED, LOW);
-    delay(20);
   } else if (humidity > 80 || humidity < 60) {
     print_text_line("Humidity out of range!", 30, 0);
     display.display();
     digitalWrite(LED, HIGH);
-    delay(500);
-    digitalWrite(LED, LOW);
-    delay(20);
   } else {
+    digitalWrite(LED, LOW);
     display.display();
     delay(500);
   }
