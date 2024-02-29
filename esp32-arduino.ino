@@ -23,7 +23,7 @@ int utc_offset = 0;
 int dst_offset = 0;
 
 int milliTimenow = 0;
-int timeinit[3] = {0, 0, 0};
+int initmilliseconds = 0;
 int timenow[3] = {0, 0, 0};
 int buzzer_tones[6] = {262, 294, 330, 349, 392, 440};
 int buzzer_tone_count = 6;
@@ -133,9 +133,10 @@ void update_time() {
   strftime(timeSecond, 3, "%S", &timeinfo);
   strftime(timeMinute, 3, "%M", &timeinfo);
   strftime(timeHour, 3, "%H", &timeinfo);
-  timeinit[0] = atoi(timeHour);
-  timeinit[1] = atoi(timeMinute);
-  timeinit[2] = atoi(timeSecond);
+  // timeinit[0] = atoi(timeHour);
+  // timeinit[1] = atoi(timeMinute);
+  // timeinit[2] = atoi(timeSecond);
+  initmilliseconds = atoi(timeSecond) * 1000 + atoi(timeMinute) * 60 * 1000 + atoi(timeHour) * 60 * 60 * 1000;
   display.clearDisplay();
 }
 
@@ -198,9 +199,73 @@ void display_alarm_menu() {
   }
 }
 
+void display_alarm_unit(int time_index, int value) {
+  display.clearDisplay();
+  if (time_index == 0) {
+    print_text_line("Set hour ", 0, 0);
+    print_text_line("-> " + String(value), 10, 0);
+  } else if (time_index == 1) {
+    print_text_line("Set minute ", 0, 0);
+    print_text_line("-> " + String(value), 10, 0);
+  }
+}
+
+bool set_alarm_time_unit(int alarm_index, int time_index) {
+  int value = alarm_times[alarm_index][time_index];
+  display.clearDisplay();
+  if (time_index == 0) {
+    display_alarm_unit(time_index, value);
+    while (true) {
+      if (digitalRead(UP_BUTTON) == LOW) {
+        value = (value + 1) % 24;
+        display_alarm_unit(time_index, value);
+      } else if (digitalRead(DOWN_BUTTON) == LOW) {
+        value = (value - 1) % 24;
+        if (value == -1) { value = 23; }
+        display_alarm_unit(time_index, value);
+      } else if (digitalRead(OK_BUTTON) == LOW) {
+        alarm_times[alarm_index][time_index] = value;
+        return true;
+      } else if (digitalRead(CANCEL_BUTTON) == LOW) {
+        return false;
+      }
+      delay(200);
+    }
+  } else if (time_index == 1) {
+    display_alarm_unit(time_index, value);
+    while (true) {
+      if (digitalRead(UP_BUTTON) == LOW) {
+        value = (value + 1) % 60;
+        display_alarm_unit(time_index, value);
+      } else if (digitalRead(DOWN_BUTTON) == LOW) {
+        value = (value - 1) % 60;
+        if (value == -1) { value = 59; }
+        display_alarm_unit(time_index, value);
+      } else if (digitalRead(OK_BUTTON) == LOW) {
+        alarm_times[alarm_index][time_index] = value;
+        return true;
+      } else if (digitalRead(CANCEL_BUTTON) == LOW) {
+        return false;
+      }
+      delay(200);
+    }
+  }
+  return false;
+}
+
 void set_alarm_time(int alarm_index) {
   display.clearDisplay();
   print_text_line("Set alarm " + String(alarm_index + 1) + " time", 0, 0);
+  int prev_hour = alarm_times[alarm_index][0];
+  if (set_alarm_time_unit(alarm_index, 0)) {
+    if (set_alarm_time_unit(alarm_index, 1)) {
+      display.clearDisplay();
+      print_text_line("Alarm " + String(alarm_index + 1) + " time set to " + String(alarm_times[alarm_index][0]) + ":" + String(alarm_times[alarm_index][1]), 0, 0);
+      delay(2000);
+    } else {
+      alarm_times[alarm_index][0] = prev_hour;
+    }
+  }
   delay(1000);
 }
 
@@ -240,9 +305,15 @@ void go_to_menu() {
       } else if (current_menu_option == 1) {
         set_alarm();
       } else if (current_menu_option == 2) {
+        alarms_enabled = !alarms_enabled;
         display.clearDisplay();
-        print_text_line("enable/disable alarms");
+        if (alarms_enabled) {
+          print_text_line("Alarms enabled", 0, 0);
+        } else {
+          print_text_line("Alarms disabled", 0, 0);
+        }
         delay(2000);
+        show_menu();
       }
     } else if (digitalRead(CANCEL_BUTTON) == LOW) {
       display.clearDisplay();
@@ -251,14 +322,16 @@ void go_to_menu() {
   }
 }
 
-
 void update_time_and_temp() {
   humidity = dht.getHumidity();
   temperature = dht.getTemperature();
-  milliTimenow = millis();
-  timenow[0] = timeinit[0] + (milliTimenow / 1000 / 60 / 60) % 24;
-  timenow[1] = timeinit[1] + (milliTimenow / 1000 / 60) % 60;
-  timenow[2] = timeinit[2] + (milliTimenow / 1000) % 60;
+  
+  milliTimenow = initmilliseconds + millis();
+
+  timenow[0] = (milliTimenow / 1000 / 60 / 60) % 24;
+  timenow[1] = (milliTimenow / 1000 / 60) % 60;
+  timenow[2] = (milliTimenow / 1000) % 60;
+
   display.clearDisplay();
   print_text_line("Time: " + String(timenow[0]) + ":" + String(timenow[1]) + ":" + String(timenow[2]), 0, 0);
   print_text_line("Temperature: " + String(temperature) + "C", 10, 0);
