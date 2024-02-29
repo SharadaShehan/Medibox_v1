@@ -128,10 +128,6 @@
     [ "bb1:tn.31", "bb1:39t.b", "white", [ "v0" ] ],
     [ "bb1:tp.4", "bb1:1t.b", "red", [ "v0" ] ],
     [ "bb1:tn.3", "bb1:4t.c", "white", [ "v0" ] ],
-    [ "oled1:GND", "bb1:59t.c", "", [ "$bb" ] ],
-    [ "oled1:VCC", "bb1:60t.c", "", [ "$bb" ] ],
-    [ "oled1:SCL", "bb1:61t.c", "", [ "$bb" ] ],
-    [ "oled1:SDA", "bb1:62t.c", "", [ "$bb" ] ],
     [ "btn1:1.l", "bb1:39t.c", "", [ "$bb" ] ],
     [ "btn1:2.l", "bb1:37t.c", "", [ "$bb" ] ],
     [ "btn1:1.r", "bb1:39b.h", "", [ "$bb" ] ],
@@ -167,7 +163,11 @@
     [ "dht1:VCC", "bb1:1t.a", "", [ "$bb" ] ],
     [ "dht1:SDA", "bb1:2t.a", "", [ "$bb" ] ],
     [ "dht1:NC", "bb1:3t.a", "", [ "$bb" ] ],
-    [ "dht1:GND", "bb1:4t.a", "", [ "$bb" ] ]
+    [ "dht1:GND", "bb1:4t.a", "", [ "$bb" ] ],
+    [ "oled1:GND", "bb1:59t.c", "", [ "$bb" ] ],
+    [ "oled1:VCC", "bb1:60t.c", "", [ "$bb" ] ],
+    [ "oled1:SCL", "bb1:61t.c", "", [ "$bb" ] ],
+    [ "oled1:SDA", "bb1:62t.c", "", [ "$bb" ] ]
   ],
   "dependencies": {}
 }
