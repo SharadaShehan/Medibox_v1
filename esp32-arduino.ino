@@ -4,11 +4,13 @@
 #include <DHTesp.h>
 #include <WiFi.h>
 
+// Define constants for the OLED display
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 #define OLED_RESET -1
 #define SCREEN_ADDRESS 0x3C
 
+// Define constants for the hardware pins
 #define LED 18
 #define DHT_PIN 12
 #define BUZZER 19
@@ -17,11 +19,12 @@
 #define OK_BUTTON 27
 #define CANCEL_BUTTON 33
 
+// Create an instance of the DHT sensor
 DHTesp dht;
 
+// Define global variables
 int utc_offset = 0;
 int dst_offset = 0;
-
 int milliTimenow = 0;
 int initmilliseconds = 0;
 int timenow[3] = {0, 0, 0};
@@ -29,7 +32,6 @@ int buzzer_tones[6] = {262, 294, 330, 349, 392, 440};
 int buzzer_tone_count = 6;
 float humidity;
 float temperature;
-
 int current_alarm_option = 0;
 const int alarm_count = 3;
 int alarm_times[alarm_count][2] = {
@@ -39,20 +41,23 @@ int alarm_times[alarm_count][2] = {
 };
 bool alarm_ringing_finished[alarm_count] = {false, false, false};
 bool alarms_enabled = true;
-
 String menu_options[] = {"Set Time Zone", "Set Alarm", "Enable/Disable Alarms"};
 int menu_option_count = 3;
 int current_menu_option = 0;
 
+// Create an instance of the OLED display
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 void setup() {
+  // Start the serial communication
   Serial.begin(115200);
+  // Initialize the OLED display
   if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
     Serial.println(F("SSD1306 allocation failed"));
     for (;;);
   }
 
+  // Initialize the hardware pins
   pinMode(LED, OUTPUT);
   pinMode(BUZZER, OUTPUT);
   pinMode(UP_BUTTON, INPUT);
@@ -60,18 +65,20 @@ void setup() {
   pinMode(OK_BUTTON, INPUT);
   pinMode(CANCEL_BUTTON, INPUT);
 
+  // Initialize the DHT sensor
   dht.setup(DHT_PIN, DHTesp::DHT22);
 
   display.display();
   delay(2000);
 
+  // Connect to the WiFi network
   WiFi.begin("Wokwi-GUEST", "", 6);
   while (WiFi.status() != WL_CONNECTED) {
     delay(250);
     display.clearDisplay();
     display.println("Connecting to WiFi...");
+    display.display();
   }
-
   display.clearDisplay();
   display.println("Connected to the WiFi network");
 
@@ -82,6 +89,7 @@ void setup() {
 
   display.clearDisplay();
 
+  // Display the welcome message
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(0, 0);
@@ -94,15 +102,18 @@ void setup() {
 
 void loop() {
   update_time_and_temp();
+  // Check if the alarm time has been reached and ring the alarm
   if (alarms_enabled) {
     check_alarm_reached();
   }
+  // Check if the user wants to go to the menu
   if (digitalRead(OK_BUTTON) == LOW) {
     go_to_menu();
   }
   delay(500);
 }
 
+// Function to print any text on the OLED display
 void print_text_line(String text, int row = 0, int column = 0, int text_size = 1) {
   display.setTextSize(text_size);
   display.setCursor(column, row);
@@ -110,6 +121,7 @@ void print_text_line(String text, int row = 0, int column = 0, int text_size = 1
   display.display();
 }
 
+// Function to display the menu
 void show_menu() {
   display.clearDisplay();
   print_text_line("Menu", 0, 0, 2);
@@ -122,9 +134,12 @@ void show_menu() {
   }
 }
 
+// Function to change the time using the NTP server
 void update_time() {
+  // Connect to the WiFi network
   configTime(utc_offset * 3600, dst_offset * 3600, "pool.ntp.org");
   struct tm timeinfo;
+  // Get the current time from the NTP server
   if (!getLocalTime(&timeinfo)) {
     Serial.println("Failed to obtain time");
     return;
@@ -133,22 +148,22 @@ void update_time() {
   strftime(timeSecond, 3, "%S", &timeinfo);
   strftime(timeMinute, 3, "%M", &timeinfo);
   strftime(timeHour, 3, "%H", &timeinfo);
-  // timeinit[0] = atoi(timeHour);
-  // timeinit[1] = atoi(timeMinute);
-  // timeinit[2] = atoi(timeSecond);
-  initmilliseconds = atoi(timeSecond) * 1000 + atoi(timeMinute) * 60 * 1000 + atoi(timeHour) * 60 * 60 * 1000;
+  // Calculate started time in milliseconds, corresponding to the current timezone
+  initmilliseconds = atoi(timeSecond) * 1000 + atoi(timeMinute) * 60 * 1000 + atoi(timeHour) * 60 * 60 * 1000 - millis();
   display.clearDisplay();
 }
 
+// Function to display the current time zone
 void display_time_zone(int utc_offset) {
   display.clearDisplay();
   if (utc_offset >= 0) {
-    print_text_line("Current Time Zone: UTC+" + String(utc_offset), 0, 0);
+    print_text_line("Current Time Zone: \nUTC+" + String(utc_offset), 0, 0);
   } else {
-    print_text_line("Current Time Zone: UTC" + String(utc_offset), 0, 0);
+    print_text_line("Current Time Zone: \nUTC" + String(utc_offset), 0, 0);
   }
 }
 
+// Function to set the time zone
 void set_time_zone() {
   int temp_utc_offset = utc_offset;
   display_time_zone(temp_utc_offset);
@@ -170,9 +185,9 @@ void set_time_zone() {
       utc_offset = temp_utc_offset;
       display.clearDisplay();
       if (utc_offset >= 0) {
-        print_text_line("Time Zone set to UTC+" + String(utc_offset), 0, 0);
+        print_text_line("Time Zone set to \nUTC+" + String(utc_offset), 0, 0);
       } else {
-        print_text_line("Time Zone set to UTC" + String(utc_offset), 0, 0);
+        print_text_line("Time Zone set to \nUTC" + String(utc_offset), 0, 0);
       }
       delay(2000);
       update_time();
@@ -187,11 +202,13 @@ void set_time_zone() {
   delay(200);
 }
 
+// Function to display the alarm menu
 void display_alarm_menu() {
   display.clearDisplay();
   print_text_line("Select alarm to set", 0, 0);
   for (int i = 0; i < alarm_count; i++) {
     if (i == current_alarm_option) {
+      // Highlight the current alarm option
       print_text_line("-> Alarm " + String(i + 1) + ": " + String(alarm_times[i][0]) + ":" + String(alarm_times[i][1]), 10 + i * 10, 0);
     } else {
       print_text_line("Alarm " + String(i + 1) + ": " + String(alarm_times[i][0]) + ":" + String(alarm_times[i][1]), 10 + i * 10, 0);
@@ -199,6 +216,8 @@ void display_alarm_menu() {
   }
 }
 
+
+// Function to display selected alarm time in hours or minutes
 void display_alarm_unit(int time_index, int value) {
   display.clearDisplay();
   if (time_index == 0) {
@@ -210,9 +229,11 @@ void display_alarm_unit(int time_index, int value) {
   }
 }
 
+// Function to set the alarm time in hours or minutes
 bool set_alarm_time_unit(int alarm_index, int time_index) {
   int value = alarm_times[alarm_index][time_index];
   display.clearDisplay();
+  // set the alarm time in hours
   if (time_index == 0) {
     display_alarm_unit(time_index, value);
     while (true) {
@@ -231,7 +252,9 @@ bool set_alarm_time_unit(int alarm_index, int time_index) {
       }
       delay(200);
     }
-  } else if (time_index == 1) {
+  } 
+  // set the alarm time in minutes
+  else if (time_index == 1) {
     display_alarm_unit(time_index, value);
     while (true) {
       if (digitalRead(UP_BUTTON) == LOW) {
@@ -253,10 +276,12 @@ bool set_alarm_time_unit(int alarm_index, int time_index) {
   return false;
 }
 
+// Function to set the alarm time
 void set_alarm_time(int alarm_index) {
   display.clearDisplay();
   print_text_line("Set alarm " + String(alarm_index + 1) + " time", 0, 0);
   int prev_hour = alarm_times[alarm_index][0];
+  // update alarm time only if setting both hours and minutes is successful
   if (set_alarm_time_unit(alarm_index, 0)) {
     if (set_alarm_time_unit(alarm_index, 1)) {
       display.clearDisplay();
@@ -269,6 +294,7 @@ void set_alarm_time(int alarm_index) {
   delay(1000);
 }
 
+// Function to select alarm option for updating the alarm time
 void set_alarm() {
   while (true) {
     if (digitalRead(UP_BUTTON) == LOW) {
@@ -289,17 +315,22 @@ void set_alarm() {
   } 
 }
 
+// Function to go to the menu
 void go_to_menu() {
   show_menu();
   while (true) {
+    // Check if the user wants to navigate the menu
     if (digitalRead(UP_BUTTON) == LOW) {
       current_menu_option = (current_menu_option - 1) % menu_option_count;
       if (current_menu_option == -1) { current_menu_option = menu_option_count - 1; }
       show_menu();
-    } else if (digitalRead(DOWN_BUTTON) == LOW) {
+    }
+    else if (digitalRead(DOWN_BUTTON) == LOW) {
       current_menu_option = (current_menu_option + 1) % menu_option_count;
       show_menu();
-    } else if (digitalRead(OK_BUTTON) == LOW) {
+    }
+    // Navigate to relevant menu option based on user input
+    else if (digitalRead(OK_BUTTON) == LOW) {
       if (current_menu_option == 0) {
         set_time_zone();
       } else if (current_menu_option == 1) {
@@ -315,27 +346,35 @@ void go_to_menu() {
         delay(2000);
         show_menu();
       }
-    } else if (digitalRead(CANCEL_BUTTON) == LOW) {
+    }
+    // Return to the main screen
+    else if (digitalRead(CANCEL_BUTTON) == LOW) {
       display.clearDisplay();
       return;
     }
   }
 }
 
+// Function to update the time and temperature on the OLED display
 void update_time_and_temp() {
+  // read the temperature and humidity from the DHT sensor
   humidity = dht.getHumidity();
   temperature = dht.getTemperature();
-  
+
+  // calculate the current time in milliseconds
   milliTimenow = initmilliseconds + millis();
 
-  timenow[0] = (milliTimenow / 1000 / 60 / 60) % 24;
-  timenow[1] = (milliTimenow / 1000 / 60) % 60;
-  timenow[2] = (milliTimenow / 1000) % 60;
+  // calculate the current time in hours, minutes, and seconds
+  timenow[0] = (milliTimenow / 1000 / 60 / 60) % 24;    // hours
+  timenow[1] = (milliTimenow / 1000 / 60) % 60;   // minutes
+  timenow[2] = (milliTimenow / 1000) % 60;    // seconds
 
   display.clearDisplay();
   print_text_line("Time: " + String(timenow[0]) + ":" + String(timenow[1]) + ":" + String(timenow[2]), 0, 0);
   print_text_line("Temperature: " + String(temperature) + "C", 10, 0);
   print_text_line("Humidity: " + String(humidity) + "%", 20, 0);
+  // Check if the temperature and humidity are within the acceptable range
+  // If not, display a warning message and turn on the LED
   if ((temperature > 32 || temperature < 26) && (humidity > 80 || humidity < 60)) {
     print_text_line("Temperature and humidity out of range!", 30, 0);
     display.display();
@@ -355,10 +394,13 @@ void update_time_and_temp() {
   }
 }
 
+// Function to ring the alarm
 void ring_alarm(int alarm_index) {
   digitalWrite(LED, HIGH);
+  // keep ringing the alarm until the user stops it
   while (!alarm_ringing_finished[alarm_index]) {
     for (int j = 0; j < buzzer_tone_count; j++) {
+      // Check if the user has stopped the alarm
       if (digitalRead(CANCEL_BUTTON) == LOW) {
         alarm_ringing_finished[alarm_index] = true;
         digitalWrite(LED, LOW);
@@ -372,6 +414,7 @@ void ring_alarm(int alarm_index) {
   }
 }
 
+// Function to check if the alarm time has been reached
 void check_alarm_reached() {
   for (int i = 0; i < alarm_count; i++) {
     if (alarm_times[i][0] == timenow[0] && alarm_times[i][1] == timenow[1]) {
