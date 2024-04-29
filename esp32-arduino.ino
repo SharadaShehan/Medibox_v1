@@ -3,6 +3,8 @@
 #include <Adafruit_SSD1306.h>
 #include <DHTesp.h>
 #include <WiFi.h>
+#include <PubSubClient.h>
+#include <ESP32Servo.h>
 
 // Define constants for the OLED display
 #define SCREEN_WIDTH 128
@@ -12,15 +14,41 @@
 
 // Define constants for the hardware pins
 #define LED 18
+#define LDR_LEFT 35
+#define LDR_RIGHT 34
 #define DHT_PIN 12
+#define SERVO_PIN 32
 #define BUZZER 19
 #define UP_BUTTON 26
 #define DOWN_BUTTON 25
 #define OK_BUTTON 27
 #define CANCEL_BUTTON 33
 
+// Define MQTT topics
+#define TEMPERATURE_TOPIC "medibox-210690B-temperature"
+#define HUMIDITY_TOPIC "medibox-210690B-humidity"
+#define ALARM_ON_TOPIC "medibox-210690B-alarm-on"
+#define ALARM_ON_GET_TOPIC "medibox-210690B-alarm-on-get"
+#define ALARM_1_TIME_TOPIC "medibox-210690B-alarm-1-time"
+#define ALARM_2_TIME_TOPIC "medibox-210690B-alarm-2-time"
+#define ALARM_3_TIME_TOPIC "medibox-210690B-alarm-3-time"
+#define ALARM_1_TIME_GET_TOPIC "medibox-210690B-alarm-1-time-get"
+#define ALARM_2_TIME_GET_TOPIC "medibox-210690B-alarm-2-time-get"
+#define ALARM_3_TIME_GET_TOPIC "medibox-210690B-alarm-3-time-get"
+#define LIGHT_LEFT_TOPIC "medibox-210690B-light-left"
+#define LIGHT_RIGHT_TOPIC "medibox-210690B-light-right"
+#define MOTOR_ANGLE_TOPIC "medibox-210690B-motor-angle"
+
 // Create an instance of the DHT sensor
 DHTesp dht;
+
+// Create a servo instance
+Servo servo;
+
+// Create a wifi client
+WiFiClient espClient;
+// Create an instance of the MQTT client
+PubSubClient mqttClient(espClient);
 
 // Define global variables
 int utc_offset = 0;
@@ -30,8 +58,10 @@ int initmilliseconds = 0;
 int timenow[3] = {0, 0, 0};
 int buzzer_tones[6] = {262, 294, 330, 349, 392, 440};
 int buzzer_tone_count = 6;
-float humidity;
-float temperature;
+float humidity, newHumidity;
+float temperature, newTemperature;
+int leftLight, rightLight;
+int newLeftLight, newRightLight;
 int current_alarm_option = 0;
 const int alarm_count = 3;
 int alarm_times[alarm_count][2] = {
@@ -44,6 +74,11 @@ bool alarms_enabled = true;
 String menu_options[] = {"Set Time Zone", "Set Alarm", "Enable/Disable Alarms"};
 int menu_option_count = 3;
 int current_menu_option = 0;
+char temperature_str[6];
+char humidity_str[6];
+char time_in_millis_str[10];
+char light_left_str[6];
+char light_right_str[6];
 
 // Create an instance of the OLED display
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
@@ -59,11 +94,17 @@ void setup() {
 
   // Initialize the hardware pins
   pinMode(LED, OUTPUT);
+  pinMode(LDR_LEFT, INPUT);
+  pinMode(LDR_RIGHT, INPUT);
   pinMode(BUZZER, OUTPUT);
   pinMode(UP_BUTTON, INPUT);
   pinMode(DOWN_BUTTON, INPUT);
   pinMode(OK_BUTTON, INPUT);
   pinMode(CANCEL_BUTTON, INPUT);
+  pinMode(SERVO_PIN, OUTPUT);
+
+  // Initialize the servo motor
+  servo.attach(SERVO_PIN);
 
   // Initialize the DHT sensor
   dht.setup(DHT_PIN, DHTesp::DHT22);
@@ -81,6 +122,9 @@ void setup() {
   }
   display.clearDisplay();
   display.println("Connected to the WiFi network");
+
+  // set mqtt server
+  setupMqtt();
 
   update_time();
 
@@ -100,8 +144,92 @@ void setup() {
 
 }
 
+void setupMqtt() {
+  mqttClient.setServer("test.mosquitto.org", 1883);
+  mqttClient.setCallback(receiveCallback);
+}
+
+void connectToBroker() {
+  while (!mqttClient.connected()) {
+    Serial.print("Attempting MQTT connection....");
+    if (mqttClient.connect("ESP-6783-876345267")) {
+      Serial.println("connected");
+      mqttClient.subscribe(ALARM_ON_GET_TOPIC);
+      mqttClient.subscribe(ALARM_1_TIME_GET_TOPIC);
+      mqttClient.subscribe(ALARM_2_TIME_GET_TOPIC);
+      mqttClient.subscribe(ALARM_3_TIME_GET_TOPIC);
+      mqttClient.subscribe(MOTOR_ANGLE_TOPIC);
+      // publish alarm status to the MQTT broker
+      if (alarms_enabled) {
+        mqttClient.publish(ALARM_ON_TOPIC, "true");
+      } else {
+        mqttClient.publish(ALARM_ON_TOPIC, "false");
+      }
+      // publish the alarm times to the MQTT broker
+      sprintf(time_in_millis_str, "%d", alarm_time_to_millis(alarm_times[0][0], alarm_times[0][1]));
+      mqttClient.publish(ALARM_1_TIME_TOPIC, time_in_millis_str);
+      sprintf(time_in_millis_str, "%d", alarm_time_to_millis(alarm_times[1][0], alarm_times[1][1]));
+      mqttClient.publish(ALARM_2_TIME_TOPIC, time_in_millis_str);
+      sprintf(time_in_millis_str, "%d", alarm_time_to_millis(alarm_times[2][0], alarm_times[2][1]));
+      mqttClient.publish(ALARM_3_TIME_TOPIC, time_in_millis_str);
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(mqttClient.state());
+      Serial.println(" try again in 5 seconds");
+      delay(5000);
+    }
+  }
+}
+
+int alarm_time_to_millis(int hour, int minute) {
+  return hour * 60 * 60 * 1000 + minute * 60 * 1000;
+}
+
+void millis_to_alarm_time(int millis, int alarm_index) {
+  alarm_times[alarm_index][0] = (millis / 1000 / 60 / 60) % 24;
+  alarm_times[alarm_index][1] = (millis / 1000 / 60) % 60;
+}
+
+void receiveCallback(char* topic, byte* payload, unsigned int length) {
+  Serial.print("Message arrived [");
+  Serial.print(topic);
+  Serial.print("] ");
+  for (int i = 0; i < length; i++) {
+    Serial.print((char)payload[i]);
+  }
+  Serial.println();
+  // check if the received message is to enable/disable the alarms
+  if (strcmp(topic, ALARM_ON_GET_TOPIC) == 0) {
+    // update the alarm status based on the received message
+    if (strcmp((char*)payload, "true") == 0) {
+      alarms_enabled = true;
+    } else {
+      alarms_enabled = false;
+    }
+  }
+  // check if the received message is to update the alarm times
+  else if (strcmp(topic, ALARM_1_TIME_GET_TOPIC) == 0) {
+    millis_to_alarm_time(atoi((char*)payload), 0);
+  } else if (strcmp(topic, ALARM_2_TIME_GET_TOPIC) == 0) {
+    millis_to_alarm_time(atoi((char*)payload), 1);
+  } else if (strcmp(topic, ALARM_3_TIME_GET_TOPIC) == 0) {
+    millis_to_alarm_time(atoi((char*)payload), 2);
+  }
+  // check if the received message is to update the motor angle
+  else if (strcmp(topic, MOTOR_ANGLE_TOPIC) == 0) {
+    servo.write(atoi((char*)payload));
+  }
+}
+
 void loop() {
+  
+  if (!mqttClient.connected()) {
+    connectToBroker();
+  }
+
   update_time_and_temp();
+  update_light_intensity();
+
   // Check if the alarm time has been reached and ring the alarm
   if (alarms_enabled) {
     check_alarm_reached();
@@ -110,6 +238,8 @@ void loop() {
   if (digitalRead(OK_BUTTON) == LOW) {
     go_to_menu();
   }
+
+  mqttClient.loop();
   delay(500);
 }
 
@@ -286,6 +416,19 @@ void set_alarm_time(int alarm_index) {
     if (set_alarm_time_unit(alarm_index, 1)) {
       display.clearDisplay();
       print_text_line("Alarm " + String(alarm_index + 1) + " time set to " + String(alarm_times[alarm_index][0]) + ":" + String(alarm_times[alarm_index][1]), 0, 0);
+      // publish the alarm time to the MQTT broker
+      if (!mqttClient.connected()) {
+        connectToBroker();
+      }
+      // copy the alarm time to a string
+      sprintf(time_in_millis_str, "%d", alarm_time_to_millis(alarm_times[alarm_index][0], alarm_times[alarm_index][1]));
+      if (alarm_index == 0) {
+        mqttClient.publish(ALARM_1_TIME_TOPIC, time_in_millis_str);
+      } else if (alarm_index == 1) {
+        mqttClient.publish(ALARM_2_TIME_TOPIC, time_in_millis_str);
+      } else if (alarm_index == 2) {
+        mqttClient.publish(ALARM_3_TIME_TOPIC, time_in_millis_str);
+      }
       delay(2000);
     } else {
       alarm_times[alarm_index][0] = prev_hour;
@@ -336,13 +479,27 @@ void go_to_menu() {
       } else if (current_menu_option == 1) {
         set_alarm();
       } else if (current_menu_option == 2) {
-        alarms_enabled = !alarms_enabled;
+        // alarms_enabled = !alarms_enabled;
+        // publish the alarm status to the MQTT broker
         display.clearDisplay();
-        if (alarms_enabled) {
-          print_text_line("Alarms enabled", 0, 0);
-        } else {
-          print_text_line("Alarms disabled", 0, 0);
+        if (!mqttClient.connected()) {
+          connectToBroker();
         }
+        if (!alarms_enabled) {
+          mqttClient.publish(ALARM_ON_TOPIC, "true");
+          print_text_line("Alarms enabled", 0, 0);
+          alarms_enabled = true;
+        } else {
+          mqttClient.publish(ALARM_ON_TOPIC, "false");
+          print_text_line("Alarms disabled", 0, 0);
+          alarms_enabled = false;
+        }
+        
+        // if (alarms_enabled) {
+          
+        // } else {
+          
+        // }
         delay(2000);
         show_menu();
       }
@@ -355,11 +512,74 @@ void go_to_menu() {
   }
 }
 
+bool temperatureChanged() {
+  if (newTemperature != temperature) {
+    temperature = newTemperature;
+    return true;
+  }
+  return false;
+}
+
+bool humidityChanged() {
+  if (newHumidity != humidity) {
+    humidity = newHumidity;
+    return true;
+  }
+  return false;
+}
+
+bool leftLightChanged() {
+  if (newLeftLight != leftLight) {
+    leftLight = newLeftLight;
+    return true;
+  }
+  return false;
+}
+
+bool rightLightChanged() {
+  if (newRightLight != rightLight) {
+    rightLight = newRightLight;
+    return true;
+  }
+  return false;
+}
+
+void update_light_intensity() {
+  // read the light intensity from the LDR sensors
+  newLeftLight = analogRead(LDR_LEFT);
+  newRightLight = analogRead(LDR_RIGHT);
+  // check if the light intensity has changed
+  if (leftLightChanged()) {
+    // publish the light intensity to the MQTT broker
+    String(leftLight).toCharArray(light_left_str, 6);
+    mqttClient.publish(LIGHT_LEFT_TOPIC, light_left_str);
+  }
+  if (rightLightChanged()) {
+    // publish the light intensity to the MQTT broker
+    String(rightLight).toCharArray(light_right_str, 6);
+    mqttClient.publish(LIGHT_RIGHT_TOPIC, light_right_str);
+  }
+}
+
 // Function to update the time and temperature on the OLED display
 void update_time_and_temp() {
   // read the temperature and humidity from the DHT sensor
-  humidity = dht.getHumidity();
-  temperature = dht.getTemperature();
+  newHumidity = dht.getHumidity();
+  newTemperature = dht.getTemperature();
+
+  // check if the humidity has changed
+  if (humidityChanged()) {
+    String(humidity).toCharArray(humidity_str, 6);
+    // publish the humidity to the MQTT broker
+    mqttClient.publish(HUMIDITY_TOPIC, humidity_str);
+  }
+
+  // check if the temperature has changed
+  if (temperatureChanged()) {
+    String(temperature).toCharArray(temperature_str, 6);
+    // publish the temperature to the MQTT broker
+    mqttClient.publish(TEMPERATURE_TOPIC, temperature_str);
+  }
 
   // calculate the current time in milliseconds
   milliTimenow = initmilliseconds + millis();
