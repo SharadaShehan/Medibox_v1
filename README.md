@@ -31,3 +31,8 @@
 <p align="center">
 <img src="screenshots/SelectASavedMedicine.png" width="100%">
 </p>
+
+### Node Red Flow Diagram
+<p align="center">
+<img src="screenshots/NodeRedFlowDiagram.png" width="100%">
+</p>
