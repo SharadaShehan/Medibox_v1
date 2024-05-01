@@ -1,4 +1,4 @@
-# Smart_Medibox
+# Medibox - v1.0
 
 ### Circuit Diagram
 
