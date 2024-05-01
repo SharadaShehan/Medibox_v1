@@ -56,8 +56,8 @@ int dstOffset = 0; // Daylight saving time offset
 int milliTimenow = 0; // Milliseconds since the program started
 int initmilliseconds = 0; // Time, the program started in milliseconds
 int timenow[3] = {0, 0, 0}; // Current time in hours, minutes, and seconds
-int buzzerToneCount = 6;  // Number of buzzer tones
-int buzzer_tones[buzzerToneCount] = {262, 294, 330, 349, 392, 440}; // Buzzer tones
+const int buzzerToneCount = 6;  // Number of buzzer tones
+int buzzerTones[buzzerToneCount] = {262, 294, 330, 349, 392, 440}; // Buzzer tones
 float humidity, newHumidity, temperature, newTemperature; // For the DHT sensor
 int leftLight, rightLight, newLeftLight, newRightLight; // For the LDR sensors
 // Strings to store the values for the MQTT communication
@@ -69,7 +69,7 @@ int alarmTimes[alarmCount][2] = {{0, 1}, {1, 0}, {2, 0}}; // Alarm times in hour
 int currentAlarmOption = 0; // Current selected alarm option
 bool alarmRingingFinished[alarmCount] = {false, false, false}; // Alarm ringing status
 // Variables to configure the menu
-int menuOptionCount = 3;  // Number of menu options
+const int menuOptionCount = 3;  // Number of menu options
 String menuOptions[menuOptionCount] = {"Set Time Zone", "Set Alarm", "Enable/Disable Alarms"}; // Menu options
 int currentMenuOption = 0;  // Current selected menu option
 
@@ -657,7 +657,7 @@ void ringAlarm(int alarmIndex) {
         break;
       }
       // Ring the buzzer with different tones
-      tone(BUZZER, buzzer_tones[j]); delay(400);
+      tone(BUZZER, buzzerTones[j]); delay(400);
       noTone(BUZZER); delay(2);
     }
   }
